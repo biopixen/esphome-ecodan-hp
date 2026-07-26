@@ -149,7 +149,7 @@ namespace ecodan
             initialCount = 0;
             disconnect();
         };
-        bool initialCmdCompleted() { return initialCount == 3; };
+        bool initialCmdCompleted() { return initialCount == 1; };
 
         bool dispatch_next_status_cmd();
         bool dispatch_next_cmd();
