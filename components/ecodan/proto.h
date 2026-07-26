@@ -148,8 +148,8 @@ namespace ecodan
 
     const uint8_t HEADER_MAGIC_A1 = 0xFC;
     const uint8_t HEADER_MAGIC_A2 = 0x02;
-    const uint8_t HEADER_MAGIC_B = 0x02;
-    const uint8_t HEADER_MAGIC_C = 0x7A;
+    const uint8_t HEADER_MAGIC_B = 0x01;
+    const uint8_t HEADER_MAGIC_C = 0x30;
     const uint8_t HEADER_MAGIC_D = 0xFF;
 
     struct Message
