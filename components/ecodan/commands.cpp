@@ -205,10 +205,10 @@ namespace ecodan
         return dispatch_next_cmd();
     }
 
-    #define MAX_INITIAL_CMD_SIZE 2
+
+    #define MAX_INITIAL_CMD_SIZE 1
     Message initialCmdQueue[MAX_INITIAL_CMD_SIZE] = {
-        Message{MsgType::GET_CONFIGURATION, GetType::HARDWARE_CONFIGURATION},
-        Message{MsgType::GET_CMD, GetType::DIP_SWITCHES}
+        Message{MsgType::GET_CONFIGURATION, GetType::HARDWARE_CONFIGURATION}
     };
 
     #define MAX_STATUS_CMD_SIZE 21
