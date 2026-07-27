@@ -1,11 +1,13 @@
 #include "ecodan_scanner.h"
 #include "esphome/core/log.h"
 #include <cstdio>
+#include <cstring>
 
 namespace esphome {
 namespace ecodan_scanner {
 
 static const char *const TAG = "ecodan_scanner";
+const uint8_t EcodanScanner::MONITOR_TYPES[EcodanScanner::MONITOR_COUNT] = {0x02, 0x03, 0x04, 0x05, 0x06};
 
 uint8_t EcodanScanner::checksum_(const uint8_t *data, size_t len) {
   uint32_t sum = 0;
@@ -23,7 +25,7 @@ void EcodanScanner::log_packet_(const char *prefix, const uint8_t *data, size_t 
 }
 
 void EcodanScanner::setup() {
-  ESP_LOGI(TAG, "Ecodan Scanner starting...");
+  ESP_LOGI(TAG, "Ecodan Monitor starting (types: 02 03 04 05 06, looping forever)...");
   state_ = State::CONNECTING;
   last_action_time_ = millis();
 }
@@ -50,6 +52,27 @@ void EcodanScanner::send_get_(uint8_t type) {
   log_packet_(prefix, pkt, sizeof(pkt));
 }
 
+void EcodanScanner::handle_reply_(uint8_t type, const uint8_t *data, size_t len) {
+  char prefix[40];
+  snprintf(prefix, sizeof(prefix), "<<< REPLY 0x%02X", type);
+  log_packet_(prefix, data, len);
+
+  if (has_last_[monitor_index_]) {
+    bool any_diff = false;
+    for (size_t i = 0; i < len && i < 21; i++) {
+      if (data[i] != last_reply_[monitor_index_][i]) {
+        if (!any_diff) {
+          ESP_LOGW(TAG, "  >>> CHANGE detected for type 0x%02X:", type);
+          any_diff = true;
+        }
+        ESP_LOGW(TAG, "      byte[%d]: %02X -> %02X", (int) i, last_reply_[monitor_index_][i], data[i]);
+      }
+    }
+  }
+  for (size_t i = 0; i < len && i < 21; i++) last_reply_[monitor_index_][i] = data[i];
+  has_last_[monitor_index_] = true;
+}
+
 void EcodanScanner::loop() {
   uint32_t now = millis();
 
@@ -74,8 +97,8 @@ void EcodanScanner::loop() {
       if (rx_len_ > 0 && (now - last_byte_time_) > 100) {
         log_packet_("<<< CONNECT_ACK", rx_buffer_, rx_len_);
         rx_len_ = 0;
-        current_type_ = 0;
-        state_ = State::SCANNING;
+        monitor_index_ = 0;
+        state_ = State::POLLING;
         last_action_time_ = now;
       } else if (now - last_action_time_ > 2000) {
         ESP_LOGW(TAG, "No connect ack, retrying connect...");
@@ -83,13 +106,9 @@ void EcodanScanner::loop() {
       }
       break;
 
-    case State::SCANNING:
-      if (current_type_ > 0xFF) {
-        ESP_LOGI(TAG, "=== SCAN COMPLETE (0x00-0xFF) ===");
-        state_ = State::DONE;
-        break;
-      }
-      send_get_((uint8_t) current_type_);
+    case State::POLLING:
+      if (now - last_action_time_ < 1000) break;
+      send_get_(MONITOR_TYPES[monitor_index_]);
       rx_len_ = 0;
       state_ = State::WAIT_REPLY;
       last_action_time_ = now;
@@ -97,19 +116,16 @@ void EcodanScanner::loop() {
 
     case State::WAIT_REPLY:
       if (rx_len_ > 0 && (now - last_byte_time_) > 150) {
-        char prefix[40];
-        snprintf(prefix, sizeof(prefix), "<<< REPLY to 0x%02X", (uint8_t) current_type_);
-        log_packet_(prefix, rx_buffer_, rx_len_);
-        current_type_++;
-        state_ = State::SCANNING;
+        handle_reply_(MONITOR_TYPES[monitor_index_], rx_buffer_, rx_len_);
+        monitor_index_ = (monitor_index_ + 1) % MONITOR_COUNT;
+        state_ = State::POLLING;
+        last_action_time_ = now;
       } else if (now - last_action_time_ > 700) {
-        ESP_LOGD(TAG, "    (no reply for 0x%02X)", (uint8_t) current_type_);
-        current_type_++;
-        state_ = State::SCANNING;
+        ESP_LOGD(TAG, "    (no reply for 0x%02X)", MONITOR_TYPES[monitor_index_]);
+        monitor_index_ = (monitor_index_ + 1) % MONITOR_COUNT;
+        state_ = State::POLLING;
+        last_action_time_ = now;
       }
-      break;
-
-    case State::DONE:
       break;
   }
 }
